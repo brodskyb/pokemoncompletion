@@ -14,6 +14,7 @@
     "start": "cd dist && node --no-deprecation --inspect app.js",
     "compil": "npx webpack --progress --env=debug=true --env=watch=true",
     "compil-prod": "npx webpack --progress --env=deleteDist=true",
+    "test:persistence": "tsc --outDir .tmp-test --module node16 --moduleResolution node16 --skipLibCheck src/pokemonCompletion/persistence.ts test/persistence.test.ts && node .tmp-test/test/persistence.test.js",
     "herokuLogs": "heroku logs -a pokemoncompletion -n 2000 --source app > ./herokuLogs.txt && code ./herokuLogs.txt"
   },
   "dependencies": {

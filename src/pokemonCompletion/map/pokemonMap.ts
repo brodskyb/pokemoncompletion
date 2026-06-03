@@ -140,6 +140,10 @@ export class PkInteractiveMap extends GenericMap {
       if(!gcol)
         return;
 
+      gcol.isVisibleCustomReason = data.isVisible(pkCol);
+      gcol.marked = pkCol.obtained;
+      gcol.emitOnChange();
+
       pkCol.onChange.push(() => { 
         let changed = false;
         const newVis = data.isVisible(pkCol);
