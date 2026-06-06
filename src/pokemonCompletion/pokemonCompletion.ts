@@ -610,10 +610,20 @@ class Vue_pokemonCompletion_methods extends Vue_pokemonCompletion_req_methods {
     } catch(err){}
   }
   createBackup = function(this:Vue_pokemonCompletion_full){
+    let totalObtainedCount = 0;
+    this.categories.forEach(c => {
+      c.list.forEach(p => {
+        if(this.hideUntrackable && !p.trackable)
+          return;
+        if(p.obtained)
+          totalObtainedCount++;
+      });
+    });
+
     const b = {
       timestamp:Date.now(),
       content:this.generateObtainedJson(),
-      totalObtainedCount:this.totalObtainedCount,
+      totalObtainedCount,
     };
     try {
       const key = 'pokemonCompletion-' + this.name + '-backups';
