@@ -22,6 +22,7 @@ import { Category, Collectable, Conflict, Formula, FormulaContext, GameData, Loc
 
 import { PkInteractiveMap } from "./map/pokemonMap";
 import { Vue_pkCompletionist } from "./pkCompletionist";
+import { saveCategoryProgressToStorage } from "./persistence";
 import { Vue_pokemonCompletion_req_methods } from "./pokemonCompletion_req";
 
 export type Vue_pokemonCompletion_full = GameData & Vue_pokemonCompletion_methods;
@@ -220,7 +221,7 @@ class Vue_pokemonCompletion_methods extends Vue_pokemonCompletion_req_methods {
   //obtained for whole category
   updateObtainedFromStorageForAll = function(this:Vue_pokemonCompletion_full){
     this.categories.forEach(cat => {
-      this.updateObtainedStatusFromStr(cat, this.getObtainedFromStorage(cat));
+      this.updateObtainedStatusFromStr(cat, this.getObtainedFromStorage(cat), false);
     });
   }
   isLivingDex = function(this:Vue_pokemonCompletion_full){
@@ -241,25 +242,37 @@ class Vue_pokemonCompletion_methods extends Vue_pokemonCompletion_req_methods {
       return '';
     }
   }
-  updateObtainedStatusFromStr = function(this:Vue_pokemonCompletion_full,cat:Category,str:string){
+  updateObtainedStatusFromStr = function(this:Vue_pokemonCompletion_full,cat:Category,str:string, save=true){
     cat.obtainedCount = 0;
     const obtained = new Set(str.split(','));
-    cat.list.forEach(p => {
-      p.setObtained(obtained.has(p.id));
-    });
-    this.updateObtainedLocalStorageAndTextArea(cat);
+    const wasSuppressingStorageUpdates = this.suppressObtainedStorageUpdates;
+    this.suppressObtainedStorageUpdates = true;
+    try {
+      cat.list.forEach(p => {
+        p.setObtained(obtained.has(p.id));
+      });
+    } finally {
+      this.suppressObtainedStorageUpdates = wasSuppressingStorageUpdates;
+    }
+
+    if(save)
+      this.updateObtainedLocalStorageAndTextArea(cat);
+    else
+      cat.textareaObtained = str;
     this.updateAllObtainedCounts();
     this.updateVisibleCount();
   }
-  updateObtainedLocalStorageAndTextArea = callableOncePerCycle(function(this:Vue_pokemonCompletion_full,cat:Category){
+  updateObtainedLocalStorageAndTextArea = function(this:Vue_pokemonCompletion_full,cat:Category){
+    if(this.suppressObtainedStorageUpdates)
+      return;
+
     try {
-      const str = cat.list.filter(p => p.obtained).map(p => p.id).join(',');
+      const str = saveCategoryProgressToStorage(cat, localStorage);
       cat.textareaObtained = str;
-      localStorage.setItem('pokemonCompletion-' + cat.game + '-' + cat.id, str);
     } catch(err){
       console.error(err);
     }
-  });
+  };
 
   updateAllObtainedCounts = callableOncePerCycle(function(this:Vue_pokemonCompletion_full,){
     this.totalObtainedCount = 0;
@@ -328,16 +341,25 @@ class Vue_pokemonCompletion_methods extends Vue_pokemonCompletion_req_methods {
   }
 
   loadAllObtained = function(this:Vue_pokemonCompletion_full,){
+    const wasSuppressingStorageUpdates = this.suppressObtainedStorageUpdates;
     try {
       const json = JSON.parse(this.textareaAllObtained);
       this.createBackup();
+      const updatedCategories:Category[] = [];
+      this.suppressObtainedStorageUpdates = true;
       for(const i in json){
         const col = this.categories.find(c => c.id === i);
         if(!col)
           continue;
-        this.updateObtainedStatusFromStr(col,json[i]);
+        this.updateObtainedStatusFromStr(col, json[i], false);
+        updatedCategories.push(col);
       }
+      this.suppressObtainedStorageUpdates = wasSuppressingStorageUpdates;
+      updatedCategories.forEach(col => this.updateObtainedLocalStorageAndTextArea(col));
+      this.updateAllObtainedCounts();
+      this.updateVisibleCount();
     } catch(err){
+      this.suppressObtainedStorageUpdates = wasSuppressingStorageUpdates;
       alert("Error:" + err?.message);
     }
   }
@@ -588,10 +610,20 @@ class Vue_pokemonCompletion_methods extends Vue_pokemonCompletion_req_methods {
     } catch(err){}
   }
   createBackup = function(this:Vue_pokemonCompletion_full){
+    let totalObtainedCount = 0;
+    this.categories.forEach(c => {
+      c.list.forEach(p => {
+        if(this.hideUntrackable && !p.trackable)
+          return;
+        if(p.obtained)
+          totalObtainedCount++;
+      });
+    });
+
     const b = {
       timestamp:Date.now(),
       content:this.generateObtainedJson(),
-      totalObtainedCount:this.totalObtainedCount,
+      totalObtainedCount,
     };
     try {
       const key = 'pokemonCompletion-' + this.name + '-backups';
@@ -599,10 +631,9 @@ class Vue_pokemonCompletion_methods extends Vue_pokemonCompletion_req_methods {
       if (currStr){
         const currArr = JSON.parse(currStr);
         if(Array.isArray(currArr)){
-          if(currArr.length > 100)
-            currArr.slice(-100);
-          currArr.push(b);
-          localStorage.setItem(key, JSON.stringify(currArr));
+          const trimmedArr = currArr.length > 100 ? currArr.slice(-100) : currArr;
+          trimmedArr.push(b);
+          localStorage.setItem(key, JSON.stringify(trimmedArr));
           this.refreshBackupsFromLocalStorage();
           return;
         }

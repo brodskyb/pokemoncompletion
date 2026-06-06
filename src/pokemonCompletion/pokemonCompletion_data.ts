@@ -711,6 +711,7 @@ export class GameData {
 
   textareaAllObtained = '';
   displayImportExportForEachCategory = false;
+  suppressObtainedStorageUpdates = false;
   locations:Location[] = [];
   playingWith = '';
   view = 'byCategory';
